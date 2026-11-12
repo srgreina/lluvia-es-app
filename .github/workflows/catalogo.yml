@@ -2,6 +2,8 @@ name: Catálogo (estaciones y municipios)
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "23 4 2 * *"   # día 2 de cada mes, 04:23 UTC (antes del histórico del día 3)
 
 permissions:
   contents: read
