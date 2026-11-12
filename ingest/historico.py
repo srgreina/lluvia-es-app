@@ -103,7 +103,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--anio-ini", type=int, default=1996)
-    ap.add_argument("--anio-fin", type=int, default=date.today().year - 1)
+    ap.add_argument("--anio-fin", type=int, default=date.today().year)
     ap.add_argument("--solo", help="Lista de estaciones separadas por comas (pruebas)")
     args = ap.parse_args()
     out = Path(args.data_dir)

@@ -99,6 +99,17 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
 .homepin{width:14px;height:14px;border-radius:50%;background:#111;border:3px solid #ffd54a;box-shadow:0 0 0 2px #111}
 .err{color:var(--b5)}
 
+.normal{margin:14px 0 4px}
+.normal h3{margin:14px 0 6px;font:600 16px var(--display)}
+.normal .note{margin:6px 0}
+.normal .small{font-size:12.5px}
+.cmp-fila{display:grid;grid-template-columns:116px 1fr 86px;align-items:center;gap:8px;margin:4px 0;font-size:14px}
+.cmp-et{color:var(--muted)}
+.cmp-barra{height:12px;background:var(--bg);border-radius:6px;overflow:hidden}
+.cmp-barra i{display:block;height:100%;border-radius:6px}
+.cmp-barra .reg{background:var(--b2)}
+.cmp-barra .nor{background:var(--muted);opacity:.55}
+.cmp-v{text-align:right;font:600 15px var(--display);font-variant-numeric:tabular-nums}
 .vistas{margin:14px 0 10px;display:flex}
 .vistas button{flex:1;font:600 16px var(--display)}
 .anio-row{display:flex;align-items:center;gap:12px;margin:10px 0}
@@ -457,6 +468,9 @@ function renderDetail() {
     return el('button', {class: 'chip', type: 'button', 'aria-pressed': String(w === S.win), onclick: () => { S.win = w; render(); }},
       el('b', {}, x ? fmt1.format(x.mm) : '–'), el('span', {}, w.replace('h', ' h')));
   })));
+  const normal = el('div', {class: 'normal'});
+  parts.push(normal);
+  loadMensual(id).then(d => { if (S.selStation === id && normal.isConnected) renderNormal(normal, id, d); });
   parts.push(el('div', {class: 'seg vistas', role: 'group', 'aria-label': 'Vista'},
     ...[['horas', 'Últimas horas'], ['historico', 'Histórico mensual']].map(([v, t]) =>
       el('button', {type: 'button', 'aria-pressed': String(S.vista === v), onclick: () => { S.vista = v; renderDetail(); }}, t))));
@@ -482,10 +496,60 @@ async function loadMensual(id) {
   return S.mensual[id];
 }
 
+function anioActual() { return S.latest && S.latest.mes ? Number(S.latest.mes.slice(0, 4)) : new Date().getFullYear(); }
+
 function statsMensual(d) {
   const sum = Array(12).fill(0), n = Array(12).fill(0);
-  for (const fila of Object.values(d.anios)) fila.forEach((v, i) => { if (v != null) { sum[i] += v; n[i]++; } });
+  for (const [a, fila] of Object.entries(d.anios)) if (Number(a) < anioActual()) fila.forEach((v, i) => { if (v != null) { sum[i] += v; n[i]++; } });
   return sum.map((s, i) => n[i] ? s / n[i] : null);
+}
+
+const MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const pct = (x, n) => n > 0 ? `${Math.round(100 * x / n)} %` : null;
+
+function filaCmp(etiqueta, valor, maximo, clase) {
+  const w = maximo > 0 ? Math.max(1, Math.min(100, 100 * valor / maximo)) : 0;
+  return el('div', {class: 'cmp-fila'}, el('span', {class: 'cmp-et'}, etiqueta),
+    el('span', {class: 'cmp-barra'}, el('i', {class: clase, style: `width:${w}%`})),
+    el('span', {class: 'cmp-v'}, `${fmt1.format(valor)} l/m²`));
+}
+
+function renderNormal(box, id, d) {
+  const kids = [];
+  const mes = S.latest && S.latest.mes;
+  if (!d || !mes) { box.replaceChildren(); return; }
+  const anio = Number(mes.slice(0, 4)), mi = Number(mes.slice(5, 7)) - 1;
+  const media = statsMensual(d);
+  const m = S.latest.estaciones[id] && S.latest.estaciones[id].mes;
+  if (m && media[mi] != null) {
+    const horasTotales = new Date(anio, mi + 1, 0).getDate() * 24;
+    const cobertura = m.horas_mes ? m.horas_con_dato / m.horas_mes : 0;
+    const desdeDia = tfDay.format(new Date(m.desde_utc));
+    const completo = new Date(m.desde_utc).getUTCDate() === 1 && cobertura >= 0.9;
+    kids.push(el('h3', {}, `${MESES_LARGOS[mi][0].toUpperCase() + MESES_LARGOS[mi].slice(1)}, mes en curso`));
+    if (completo) {
+      const hastaHoy = media[mi] * m.horas_mes / horasTotales;
+      const mx = Math.max(m.mm, hastaHoy, 0.1);
+      kids.push(filaCmp('Registrado', m.mm, mx, 'reg'), filaCmp('Normal hasta hoy', hastaHoy, mx, 'nor'));
+      const p = pct(m.mm, hastaHoy);
+      kids.push(el('p', {class: 'note'}, `${p ? `Llevas el ${p} de lo normal a estas alturas. ` : ''}Mes completo normal: ${fmt1.format(media[mi])} l/m².`));
+    } else {
+      const mx = Math.max(m.mm, media[mi], 0.1);
+      kids.push(filaCmp('Registrado', m.mm, mx, 'reg'), filaCmp('Mes completo normal', media[mi], mx, 'nor'));
+      kids.push(el('p', {class: 'note'}, `El registro horario empezó el ${desdeDia}, así que todavía no es comparable con el mes entero.`));
+    }
+  }
+  const ant = mi === 0 ? [anio - 1, 11] : [anio, mi - 1];
+  const vAnt = d.anios[String(ant[0])] && d.anios[String(ant[0])][ant[1]];
+  if (vAnt != null && media[ant[1]] != null) {
+    const mx = Math.max(vAnt, media[ant[1]], 0.1);
+    kids.push(el('h3', {}, `${MESES_LARGOS[ant[1]][0].toUpperCase() + MESES_LARGOS[ant[1]].slice(1)} de ${ant[0]}, mes completo`));
+    kids.push(filaCmp('Registrado', vAnt, mx, 'reg'), filaCmp('Normal', media[ant[1]], mx, 'nor'));
+    const p = pct(vAnt, media[ant[1]]);
+    if (p) kids.push(el('p', {class: 'note'}, `El ${p} de lo normal.`));
+  }
+  if (kids.length) kids.push(el('p', {class: 'note small'}, `Normal: media de ${MESES_LARGOS[mi]} entre ${Object.keys(d.anios).filter(a => Number(a) < anio).length} años de la serie${d.propia ? '' : ` de ${d.fuente_nombre}`}.`));
+  box.replaceChildren(...kids);
 }
 
 function renderHist(box, id, d) {

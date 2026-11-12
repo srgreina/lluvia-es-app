@@ -94,6 +94,25 @@ def construir_latest(df, ahora, horas_ventana):
             "ventana_horas": horas_ventana, "estaciones": estaciones}
 
 
+def acumulado_mes(data_dir, ref):
+    """Lluvia del mes en curso (hasta `ref`, UTC) por estación, con su cobertura.
+    `desde_utc` es la primera hora recogida: si es posterior al día 1, el mes no está completo."""
+    ruta = _ruta_mes(data_dir, ref.year, ref.month)
+    if not ruta.exists():
+        return {}
+    df = pd.read_parquet(ruta)
+    df = df[df.fecha_utc <= ref]
+    inicio = pd.Timestamp(year=ref.year, month=ref.month, day=1, tz="UTC")
+    horas_mes = int((ref - inicio).total_seconds() // 3600)  # cada fila es el fin de una hora
+    salida = {}
+    for est, serie in df.groupby("estacion"):
+        validos = serie.prec_mm.dropna()
+        salida[est] = {"mm": round(float(validos.sum()), 1), "horas_con_dato": int(len(validos)),
+                       "horas_mes": horas_mes,
+                       "desde_utc": serie.fecha_utc.min().strftime("%Y-%m-%dT%H:%MZ")}
+    return salida
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", required=True)
@@ -108,7 +127,13 @@ def main():
 
     ahora = datetime.now(timezone.utc)
     reciente = cargar_reciente(data, cfg["horas_ventana"], ahora)
-    escribir_json(data / "latest.json", construir_latest(reciente, ahora, cfg["horas_ventana"]))
+    latest = construir_latest(reciente, ahora, cfg["horas_ventana"])
+    ref = pd.Timestamp(latest["ultima_obs_utc"])
+    latest["mes"] = ref.strftime("%Y-%m")
+    for est, m in acumulado_mes(data, ref).items():
+        if est in latest["estaciones"]:
+            latest["estaciones"][est]["mes"] = m
+    escribir_json(data / "latest.json", latest)
     print(f"Observaciones recibidas: {len(obs)} | filas de Málaga: {len(df)} | "
           f"estaciones en latest: {reciente.estacion.nunique()}")
 

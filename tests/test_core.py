@@ -47,6 +47,9 @@ def test_fusion_y_latest():
         assert a["24h"]["horas_con_dato"] == 5 and a["24h"]["mm"] == 4.0  # 0.5+2.0+3x0.5, 11:00 sin dato
         assert a["1h"]["mm"] == 0.5
         assert lt["ultima_obs_utc"] == "2026-11-12T15:00Z"  # ventanas ancladas a la última observación
+        m = horario.acumulado_mes(d, pd.Timestamp(lt["ultima_obs_utc"]))["A"]
+        assert m["mm"] == 4.0 and m["horas_con_dato"] == 5 and m["desde_utc"] == "2026-11-12T10:00Z"
+        assert m["horas_mes"] == 11 * 24 + 15  # del 1 de noviembre 00:00 a las 15:00 del día 12
 
 
 def test_historico():
