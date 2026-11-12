@@ -7,6 +7,8 @@ Los datos se guardan en el repo [`lluvia-es-datos`](https://github.com/srgreina/
 ## Web (escritorio y móvil)
 `docs/index.html`: página única (Leaflet + Chart.js) que lee los JSON del repo de datos. Mapa con la lluvia de cada estación en 1 h / 6 h / 24 h, buscador de municipios, botón de ubicación, gráfico horario y ranking. Se publica con GitHub Pages (rama `main`, carpeta `/docs`): https://srgreina.github.io/lluvia-es-app/
 
+Es instalable como app (PWA) y se abre sin conexión con los últimos datos guardados. Las estaciones cercanas se agrupan en el mapa y el círculo muestra la lluvia máxima del grupo.
+
 Para probarla contra otros datos: `?data=/ruta/a/datos/` en la URL. Se puede enlazar un municipio (`#m29067`) o una estación (`#e6172Y`).
 
 Las ventanas de 1/6/24 h se anclan a la **última observación disponible** (AEMET publica con ~1 h de retraso) y la web indica cuántas horas con dato hay detrás de cada cifra.

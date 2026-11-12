@@ -7,12 +7,15 @@
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Lluvia en Málaga</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect x=%2211%22 y=%222%22 width=%2210%22 height=%2228%22 rx=%225%22 fill=%22none%22 stroke=%22%230f6b73%22 stroke-width=%223%22/%3E%3Crect x=%2213%22 y=%2216%22 width=%226%22 height=%2212%22 rx=%223%22 fill=%22%234aa3e8%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <style>
 :root{
   --bg:#edf2f1; --card:#fbfdfc; --fg:#10282e; --muted:#53686d; --line:#d3dedd; --accent:#0f6b73; --accent-ink:#ffffff;
@@ -91,6 +94,8 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
 .pin.b2{background:var(--b2)} .pin.b3{background:var(--b3)} .pin.b4{background:var(--b4)} .pin.b5{background:var(--b5)}
 .pin.sel{border-color:#ffd54a;box-shadow:0 0 0 3px #ffd54a,0 1px 6px rgba(0,0,0,.6)}
 .pin.nodata{opacity:.55}
+.pin.cluster{width:46px;height:30px;border-radius:15px;position:relative}
+.pin.cluster .n{position:absolute;top:-8px;right:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--fg);color:var(--bg);font:600 11px/18px var(--text);text-align:center;border:1.5px solid #fff}
 .homepin{width:14px;height:14px;border-radius:50%;background:#111;border:3px solid #ffd54a;box-shadow:0 0 0 2px #111}
 .err{color:var(--b5)}
 
@@ -154,6 +159,7 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
 <noscript><p style="padding:14px">Esta página necesita JavaScript.</p></noscript>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 (() => {
@@ -248,11 +254,25 @@ function initMap() {
   L.control.attribution({prefix: false}).addAttribution('© OpenStreetMap').addTo(S.map);
   const pts = Object.values(S.est).map(e => [e.lat, e.lon]);
   if (pts.length) S.map.fitBounds(pts, {padding: [30, 30]});
+  S.cluster = L.markerClusterGroup({
+    maxClusterRadius: 50, showCoverageOnHover: false, spiderfyOnMaxZoom: true, disableClusteringAtZoom: 11,
+    iconCreateFunction: c => {
+      const kids = c.getAllChildMarkers();
+      const vals = kids.map(m => acc(m.options.eid)).filter(Boolean).map(a => a.mm);
+      const mx = vals.length ? Math.max(...vals) : null;
+      const b = bucket(mx, WINDOWS[S.win].th);
+      const sel = kids.some(m => m.options.eid === S.selStation) ? ' sel' : '';
+      return L.divIcon({className: '', iconSize: [46, 30], iconAnchor: [23, 15],
+        html: `<div class="pin cluster b${b}${vals.length ? '' : ' nodata'}${sel}" title="${kids.length} estaciones, máximo de lluvia">${fmtPin(mx)}<span class="n">${kids.length}</span></div>`});
+    },
+  });
   for (const e of Object.values(S.est)) {
-    const m = L.marker([e.lat, e.lon], {icon: pinIcon(e.id), keyboard: true, title: e.nombre, riseOnHover: true}).addTo(S.map);
+    const m = L.marker([e.lat, e.lon], {icon: pinIcon(e.id), keyboard: true, title: e.nombre, riseOnHover: true, eid: e.id});
     m.on('click', () => selectStation(e.id, true));
     S.pins[e.id] = m;
+    S.cluster.addLayer(m);
   }
+  S.map.addLayer(S.cluster);
   window.addEventListener('resize', () => S.map.invalidateSize());
 }
 
@@ -271,6 +291,7 @@ function updatePins() {
     m.bindTooltip(`${S.est[id].nombre}: ${a ? fmt1.format(a.mm) + ' l/m²' : 'sin dato'}`, {direction: 'top', offset: [0, -12]});
     m.setZIndexOffset(S.selStation === id ? 1000 : 0);
   }
+  if (S.cluster) S.cluster.refreshClusters();
 }
 
 function drawLink() {
@@ -563,6 +584,15 @@ function drawChart(id) {
 document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { S.win = b.dataset.win; if (S.loaded) render(); }));
 $('reload').addEventListener('click', load);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.loaded && Date.now() - lastLoad > 600000) load(); });
+function estadoRed() {
+  if (!navigator.onLine) toast('Sin conexión. Se muestran los últimos datos guardados en este dispositivo.');
+  else if ($('banner').textContent.startsWith('Sin conexión')) { toast(''); if (S.loaded) load(); }
+}
+window.addEventListener('offline', estadoRed);
+window.addEventListener('online', estadoRed);
+if ('serviceWorker' in navigator && !qs.get('data') && location.protocol === 'https:') {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.loaded) render(); });
 setInterval(() => { if (!document.hidden && S.loaded) load(); }, 600000);
 
