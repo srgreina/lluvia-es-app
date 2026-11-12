@@ -14,7 +14,7 @@ from pathlib import Path
 from .common import (SinDatos, aemet_get, dms_a_decimal, escribir_json,
                      haversine_km, leer_json)
 
-TROZO_ANIOS = 5          # años por llamada (la API limita el rango)
+TROZO_ANIOS = 3          # años por llamada (AEMET limita el rango a 36 meses)
 PAUSA_S = 1.5            # cortesía con el límite de peticiones
 MIN_MESES = 120          # menos de 10 años de datos: serie insuficiente, se prueba otra estación
 CANDIDATAS = 4           # estaciones cercanas a probar si la propia no sirve
