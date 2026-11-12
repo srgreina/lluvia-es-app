@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from ingest import catalogo, horario
+from ingest import catalogo, historico, horario
 from ingest.common import dms_a_decimal, haversine_km
 
 
@@ -47,6 +47,16 @@ def test_fusion_y_latest():
         assert a["24h"]["horas_con_dato"] == 5 and a["24h"]["mm"] == 4.0  # 0.5+2.0+3x0.5, 11:00 sin dato
         assert a["1h"]["mm"] == 0.5
         assert lt["ultima_obs_utc"] == "2026-11-12T15:00Z"  # ventanas ancladas a la última observación
+
+
+def test_historico():
+    assert historico.parsear_pmes("12,5") == 12.5 and historico.parsear_pmes("Ip") == 0.0
+    assert historico.parsear_pmes("") is None and historico.parsear_pmes(None) is None
+    regs = [{"fecha": "1996-1", "p_mes": "10.0"}, {"fecha": "1996-2", "p_mes": "Ip"},
+            {"fecha": "1996-13", "p_mes": "999"}, {"fecha": "1997-12", "p_mes": "3.5"}]
+    s = historico.registros_a_serie(regs)
+    assert s["1996"][0] == 10.0 and s["1996"][1] == 0.0 and s["1996"][2] is None
+    assert s["1997"][11] == 3.5 and historico.contar_meses(s) == 3
 
 
 if __name__ == "__main__":

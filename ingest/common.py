@@ -19,6 +19,10 @@ class AemetError(Exception):
     """Error reintentable (429, estado != 200, respuesta vacía)."""
 
 
+class SinDatos(Exception):
+    """AEMET responde 404: no hay datos para esos criterios (no se reintenta)."""
+
+
 def cargar_config():
     with open(RAIZ / "config.yml", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -52,8 +56,12 @@ def aemet_get(ruta):
                      timeout=30)
     if r.status_code == 429:
         raise AemetError("429 rate limit")
+    if r.status_code == 404:
+        raise SinDatos(ruta)
     r.raise_for_status()
     meta = r.json()
+    if meta.get("estado") == 404:
+        raise SinDatos(meta.get("descripcion") or ruta)
     if meta.get("estado") != 200 or not meta.get("datos"):
         raise AemetError(f"estado={meta.get('estado')} descripcion={meta.get('descripcion')}")
     d = requests.get(meta["datos"], timeout=60)
