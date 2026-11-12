@@ -42,7 +42,7 @@ def parsear(html, ids):
         if not mm or mm.group(1) not in ids or len(celdas) < 9:
             continue
         d = {k: _num(v) for k, v in zip(CAMPOS, celdas[1:9])}
-        d["nombre"] = re.sub(r"^EMBALSE\s+(DEL|DE(?!\s+LA\b))?\s*", "", re.sub(r"\s+", " ", mm.group(2))).title().replace(" De ", " de ")
+        d["nombre"] = re.sub(r"^EMBALSE\s+(?:DEL\b|DE\b)?\s*", "", re.sub(r"\s+", " ", mm.group(2))).title().replace(" De ", " de ")
         salida[mm.group(1)] = d
     return {"fecha": f"{m.group(3)}-{m.group(2)}-{m.group(1)}", "hora": m.group(4), "embalses": salida}
 
