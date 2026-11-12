@@ -20,7 +20,9 @@ Datos © AEMET (AEMET OpenData). Uso y reproducción permitidos citando a AEMET 
 - `config.yml`: provincia, umbral de aviso (km) y ventana de horas.
 - `ingest/catalogo.py`: estaciones, municipios y asignación municipio → estación más cercana (con distancia).
 - `ingest/horario.py`: observación horaria → `horario/AAAA/MM.parquet` + `latest.json`.
-- `.github/workflows/`: `catalogo.yml` (manual) y `horario.yml` (cada hora, minuto 7).
+- `ingest/historico.py`: climatología mensual de AEMET (1996 hasta el año en curso) -> `mensual/<estacion>.json`.
+- `ingest/embalses.py`: volumen diario de los embalses de la provincia (SAIH Hidrosur) -> `embalses.json` y `embalses/historico.csv`.
+- `.github/workflows/`: `horario.yml` (cada hora, minuto 7), `catalogo.yml` (día 2 de cada mes y manual), `historico.yml` (día 3 de cada mes y manual) y `embalses.yml` (cada día, 08:41 UTC).
 - `tests/test_core.py`: pruebas sin red (`python -m tests.test_core`).
 
 ## Secrets necesarios (Settings → Secrets and variables → Actions)
@@ -32,8 +34,16 @@ Datos © AEMET (AEMET OpenData). Uso y reproducción permitidos citando a AEMET 
 2. Lanzar a mano el workflow **Catálogo** (genera `estaciones.json`, `municipios.json`, `municipio_estacion.json`).
 3. Lanzar a mano **Ingesta horaria** y comprobar `latest.json`; a partir de ahí corre solo.
 
+## Embalses y su licencia
+No hay API ni licencia expresa de reutilización de SAIH Hidrosur. Se lee la tabla HTML del [informe público](https://www.redhidrosurmedioambiente.es/saih/informe/embalses) una vez al día, con un `User-Agent` que identifica el proyecto, y la web cita la fuente y avisa de que los datos son automáticos, no verificados y sin valor oficial. Los embalses se eligen en `config.yml` (`embalses`, identificadores de Hidrosur).
+
+## Lluvia frente a lo normal
+La media de cada mes sale de la serie de `mensual/` (años completos anteriores al año en curso). El mes en curso solo se compara con el mes entero cuando el registro horario lo cubre desde el día 1.
+
 ## Asignación de municipios
 Cada municipio usa la **estación más cercana** con observación horaria (puede estar en otra provincia) y se guarda la distancia. Si supera `umbral_aviso_km`, el dato se marca como orientativo.
 
-## Pendiente de verificar con clave real
-Los nombres de campo de `/maestro/municipios` y del inventario de estaciones están escritos de forma defensiva, pero no se han probado contra la API. Si el workflow de catálogo falla, el primer sitio a revisar es `ingest/catalogo.py`.
+## Si algo falla
+- **Ingesta sin ejecutarse:** el cron de GitHub puede retrasarse o no dispararse; el workflow se puede lanzar a mano.
+- **Errores 403 al publicar:** caducidad o permisos del `DATOS_TOKEN` (debe tener *Contents: Read and write* sobre `lluvia-es-datos`).
+- **Histórico:** AEMET limita cada consulta a 36 meses; el código pide tramos de 3 años.
