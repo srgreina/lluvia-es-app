@@ -76,16 +76,21 @@ def _acumulado(serie, horas, ahora):
 
 
 def construir_latest(df, ahora, horas_ventana):
+    """Las ventanas (1/6/24 h) se anclan a la última observación disponible, no a la hora de
+    ejecución: AEMET publica con ~1 h de retraso y, si no, la ventana de 1 h saldría vacía."""
+    ref = df.fecha_utc.max() if not df.empty else pd.Timestamp(ahora)
     estaciones = {}
     for est, serie in df.sort_values("fecha_utc").groupby("estacion"):
         estaciones[est] = {
-            "acumulado": {"1h": _acumulado(serie, 1, ahora), "6h": _acumulado(serie, 6, ahora),
-                          "24h": _acumulado(serie, 24, ahora)},
+            "acumulado": {"1h": _acumulado(serie, 1, ref), "6h": _acumulado(serie, 6, ref),
+                          "24h": _acumulado(serie, 24, ref)},
             "serie": [{"t": r.fecha_utc.strftime("%Y-%m-%dT%H:%MZ"),
                        "mm": None if pd.isna(r.prec_mm) else r.prec_mm}
                       for r in serie.itertuples()],
         }
-    return {"generado_utc": ahora.strftime("%Y-%m-%dT%H:%MZ"), "fuente": "AEMET (CC BY 4.0, citar a AEMET)",
+    return {"generado_utc": ahora.strftime("%Y-%m-%dT%H:%MZ"),
+            "ultima_obs_utc": ref.strftime("%Y-%m-%dT%H:%MZ"),
+            "fuente": "AEMET (citar a AEMET como autora)",
             "ventana_horas": horas_ventana, "estaciones": estaciones}
 
 

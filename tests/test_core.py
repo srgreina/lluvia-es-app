@@ -46,6 +46,7 @@ def test_fusion_y_latest():
         a = lt["estaciones"]["A"]["acumulado"]
         assert a["24h"]["horas_con_dato"] == 5 and a["24h"]["mm"] == 4.0  # 0.5+2.0+3x0.5, 11:00 sin dato
         assert a["1h"]["mm"] == 0.5
+        assert lt["ultima_obs_utc"] == "2026-11-12T15:00Z"  # ventanas ancladas a la última observación
 
 
 if __name__ == "__main__":

@@ -1,8 +1,15 @@
 # lluvia-es-app
 
-Ingesta, workflows y (próximamente) frontend de la app de lluvia en España. Fase actual: **provincia de Málaga**, ampliable cambiando `config.yml`.
+Ingesta, workflows y web de la app de lluvia en España. Fase actual: **provincia de Málaga**, ampliable cambiando `config.yml`.
 
 Los datos se guardan en el repo [`lluvia-es-datos`](https://github.com/srgreina/lluvia-es-datos).
+
+## Web (escritorio y móvil)
+`docs/index.html`: página única (Leaflet + Chart.js) que lee los JSON del repo de datos. Mapa con la lluvia de cada estación en 1 h / 6 h / 24 h, buscador de municipios, botón de ubicación, gráfico horario y ranking. Se publica con GitHub Pages (rama `main`, carpeta `/docs`): https://srgreina.github.io/lluvia-es-app/
+
+Para probarla contra otros datos: `?data=/ruta/a/datos/` en la URL. Se puede enlazar un municipio (`#m29067`) o una estación (`#e6172Y`).
+
+Las ventanas de 1/6/24 h se anclan a la **última observación disponible** (AEMET publica con ~1 h de retraso) y la web indica cuántas horas con dato hay detrás de cada cifra.
 
 ## Fuente y licencia
 Datos © AEMET (AEMET OpenData). Uso y reproducción permitidos citando a AEMET como autora.
