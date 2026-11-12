@@ -3,3 +3,5 @@ provincia_nombre: MALAGA   # tal como aparece en el inventario de estaciones de 
 provincia_ine: "29"        # código INE de provincia (prefijo de los municipios)
 umbral_aviso_km: 15        # a partir de esta distancia el dato del municipio se marca como orientativo
 horas_ventana: 24          # horas que se muestran en latest.json
+# Embalses de la provincia (identificadores de SAIH Hidrosur; ampliable)
+embalses: ["16", "19", "20", "29", "30", "31", "37"]

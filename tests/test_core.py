@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from ingest import catalogo, historico, horario
+from ingest import catalogo, embalses, historico, horario
 from ingest.common import dms_a_decimal, haversine_km
 
 
@@ -60,6 +60,24 @@ def test_historico():
     s = historico.registros_a_serie(regs)
     assert s["1996"][0] == 10.0 and s["1996"][1] == 0.0 and s["1996"][2] is None
     assert s["1997"][11] == 3.5 and historico.contar_meses(s) == 3
+
+
+def test_embalses():
+    html = """<html><body><table><tbody>
+    <tr class="embalses-data-row"><td>16 EMBALSE DE LA CONCEPCIÓN</td><td>57.54</td><td>26.87</td><td>46.7</td><td>26.35</td><td>45.8</td><td>34.01</td><td>59.1</td><td>31.8</td></tr>
+    <tr class="embalses-subtotal"><td>Total sistema Costa del Sol Occ.</td><td>57.54</td><td>26.87</td><td>46.7</td><td>26.35</td><td>45.8</td><td>34.01</td><td>59.1</td><td>31.8</td></tr>
+    <tr class="embalses-data-row"><td>29 EMBALSE DEL  GUADALTEBA</td><td>153.30</td><td>143.26</td><td>93.5</td><td>142.99</td><td>93.3</td><td>77.61</td><td>50.6</td><td>n/d</td></tr>
+    <tr class="embalses-data-row"><td>51 EMBALSE DE RULES</td><td>105.36</td><td>90.94</td><td>86.3</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr>
+    </tbody></table><p>Fecha: 12/11/2026 08:00</p></body></html>"""
+    d = embalses.parsear(html, {"16", "29", "37"})
+    assert d["fecha"] == "2026-11-12" and d["hora"] == "08:00" and set(d["embalses"]) == {"16", "29"}
+    assert d["embalses"]["16"]["nombre"] == "Concepción" and d["embalses"]["16"]["pct"] == 46.7
+    assert d["embalses"]["29"]["nombre"] == "Guadalteba" and d["embalses"]["29"]["promedio_8_anios_hm3"] is None
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = tmp + "/h.csv"
+        embalses.anexar_historico(ruta, d)
+        embalses.anexar_historico(ruta, d)  # idempotente por (fecha, id)
+        assert len(open(ruta, encoding="utf-8").read().strip().splitlines()) == 3
 
 
 if __name__ == "__main__":

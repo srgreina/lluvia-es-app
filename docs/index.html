@@ -103,6 +103,13 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
 .normal h3{margin:14px 0 6px;font:600 16px var(--display)}
 .normal .note{margin:6px 0}
 .normal .small{font-size:12.5px}
+.emb{margin:10px 0 14px}
+.emb-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.emb-nom{font:600 16px var(--display)}
+.emb-pct{font:700 20px var(--display);font-variant-numeric:tabular-nums}
+.emb-barra{position:relative;height:12px;margin:5px 0 4px;background:var(--bg);border-radius:6px}
+.emb-barra i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--b2)}
+.emb-barra b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fg)}
 .cmp-fila{display:grid;grid-template-columns:116px 1fr 86px;align-items:center;gap:8px;margin:4px 0;font-size:14px}
 .cmp-et{color:var(--muted)}
 .cmp-barra{height:12px;background:var(--bg);border-radius:6px;overflow:hidden}
@@ -153,6 +160,11 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
       <section class="card">
         <h2 id="rank-title">Más lluvia</h2>
         <ol class="rank" id="rank"></ol>
+      </section>
+      <section class="card" id="embalses" hidden>
+        <h2>Embalses de Málaga</h2>
+        <div id="emb-lista"></div>
+        <p class="note small" id="emb-fuente"></p>
       </section>
       <section class="card">
         <h2>Leyenda</h2>
@@ -228,7 +240,7 @@ async function load() {
     S.est = est; S.mun = mun; S.asig = asig; S.latest = latest;
     S.munByIne = Object.fromEntries(mun.map(m => [m.ine, m]));
     S.munByName = new Map(mun.map(m => [norm(m.nombre), m]));
-    if (!S.loaded) { initMap(); initSearch(); applyInitialSelection(); S.loaded = true; }
+    if (!S.loaded) { initMap(); initSearch(); applyInitialSelection(); S.loaded = true; loadEmbalses(); }
     render();
   } catch (e) {
     console.error(e);
@@ -602,6 +614,30 @@ function drawMensual(fila, media) {
       },
     },
   });
+}
+
+/* ---------- embalses ---------- */
+async function loadEmbalses() {
+  try {
+    const d = await getJSON('embalses.json');
+    const f1 = x => x == null ? 'sin dato' : `${fmt1.format(x)} %`;
+    const lista = Object.entries(d.embalses).sort((a, b) => b[1].capacidad_hm3 - a[1].capacidad_hm3).map(([id, e]) => {
+      const media = e.promedio_8_anios_hm3 != null && e.capacidad_hm3 ? 100 * e.promedio_8_anios_hm3 / e.capacidad_hm3 : null;
+      const partes = [`Hace una semana ${f1(e.pct_sem_ant)}.`, `Hace un año ${f1(e.pct_anio_ant)}.`];
+      if (media != null) partes.push(`Media de 8 años ${f1(media)}.`);
+      return el('div', {class: 'emb', role: 'group', 'aria-label': `${e.nombre}: ${f1(e.pct)}`},
+        el('div', {class: 'emb-top'}, el('span', {class: 'emb-nom'}, e.nombre), el('span', {class: 'emb-pct'}, f1(e.pct))),
+        el('div', {class: 'emb-barra', 'aria-hidden': 'true'},
+          el('i', {style: `width:${Math.min(100, e.pct || 0)}%`}), media != null ? el('b', {style: `left:${Math.min(100, media)}%`, title: 'Media de 8 años'}) : ''),
+        el('div', {class: 'note'}, `${fmt1.format(e.volumen_hm3)} de ${fmt1.format(e.capacidad_hm3)} hm³. ${partes.join(' ')}`));
+    });
+    $('emb-lista').replaceChildren(...lista);
+    const [a, m, dd] = d.fecha.split('-');
+    $('emb-fuente').replaceChildren(`Dato del ${dd}/${m}/${a} a las ${d.hora}. Fuente: `,
+      el('a', {href: d.fuente_url, target: '_blank', rel: 'noopener'}, 'SAIH Hidrosur'),
+      '. Datos automáticos sin verificar y sin valor oficial. La marca vertical indica la media de los últimos 8 años.');
+    $('embalses').hidden = false;
+  } catch (e) { $('embalses').hidden = true; }
 }
 
 /* ---------- gráfico ---------- */
