@@ -41,6 +41,9 @@ h1{margin:0;font:700 32px/1.05 var(--display);letter-spacing:-.01em}
 .sub{color:var(--muted);font-size:14px;margin-top:4px;max-width:64ch}
 .icon-btn{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;min-width:44px;height:44px;font-size:20px;cursor:pointer}
 .icon-btn:active{transform:scale(.97)}
+.hbtns{display:flex;gap:8px;flex:none}
+.icon-btn.txt{padding:0 14px;font:600 16px var(--display);background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.icon-btn[hidden],.hbtns [hidden]{display:none}
 .controls{display:flex;flex-wrap:wrap;gap:8px;padding:6px calc(16px + env(safe-area-inset-right)) 12px calc(16px + env(safe-area-inset-left))}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
 .seg button{border:0;background:transparent;color:var(--fg);padding:0 13px;height:44px;font:600 17px var(--display);cursor:pointer}
@@ -157,8 +160,12 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
       <h1>Lluvia en Málaga</h1>
       <div class="sub" id="updated">Cargando datos…</div>
     </div>
-    <button class="icon-btn" id="reload" type="button" aria-label="Actualizar datos" title="Actualizar datos">⟳</button>
+    <div class="hbtns">
+      <button class="icon-btn txt" id="install" type="button" hidden>Instalar</button>
+      <button class="icon-btn" id="reload" type="button" aria-label="Actualizar datos" title="Actualizar datos">⟳</button>
+    </div>
   </header>
+  <div class="banner" id="iosHint" role="note" hidden>Para instalar: pulsa <b>Compartir</b> (cuadrado con flecha) y elige <b>Añadir a pantalla de inicio</b>. <button class="btn" id="iosOk" type="button">Entendido</button></div>
   <div class="banner" id="banner" role="status" hidden></div>
   <div class="controls">
     <div class="seg" role="group" aria-label="Periodo">
@@ -740,6 +747,23 @@ if ('serviceWorker' in navigator && !qs.get('data') && location.protocol === 'ht
 }
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.loaded) render(); });
 setInterval(() => { if (!document.hidden && S.loaded) load(); }, 600000);
+
+/* ---------- instalación (Android/escritorio: aviso del navegador; iPhone: guía manual) ---------- */
+(() => {
+  const btn = document.getElementById('install'), hint = document.getElementById('iosHint');
+  const instalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  let ev = null;
+  if (instalada()) return;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); ev = e; btn.hidden = false; });
+  window.addEventListener('appinstalled', () => { btn.hidden = true; hint.hidden = true; ev = null; });
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios) btn.hidden = false;
+  btn.addEventListener('click', async () => {
+    if (ev) { ev.prompt(); await ev.userChoice.catch(() => {}); ev = null; btn.hidden = true; }
+    else if (ios) hint.hidden = false;
+  });
+  document.getElementById('iosOk').addEventListener('click', () => { hint.hidden = true; });
+})();
 
 load();
 })();

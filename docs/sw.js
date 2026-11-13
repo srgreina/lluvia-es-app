@@ -1,5 +1,5 @@
 /* Service worker: la página se abre sin conexión con los últimos datos descargados. */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `lluvia-shell-${VERSION}`;
 const DATOS = `lluvia-datos-${VERSION}`;
 const ES_DATO = u => u.hostname === 'raw.githubusercontent.com' && u.pathname.includes('/lluvia-es-datos/');
