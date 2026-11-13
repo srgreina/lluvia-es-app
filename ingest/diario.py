@@ -49,6 +49,16 @@ def fusionar(actual, nuevo, hoy):
     return salida
 
 
+def evaluar(n_estaciones, n_con_dato, fallos, max_fallos=0.5):
+    """Mensaje de error si la descarga no es fiable (None si va bien). Que una estación no tenga serie
+    diaria (404) es normal; lo que alarma es que falle la API o no llegue nada."""
+    if n_estaciones and n_con_dato == 0:
+        return "No se obtuvo ningún dato diario"
+    if n_estaciones and fallos / n_estaciones > max_fallos:
+        return f"Fallaron {fallos} de {n_estaciones} estaciones al pedir el dato diario"
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", required=True)
@@ -75,14 +85,15 @@ def main():
             continue
         if dias:
             nuevo[est] = dias
-    if ids and not nuevo and not previo:
-        raise SystemExit("No se obtuvo ningún dato diario")
     escribir_json(ruta, {"actualizado_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
                          "fuente": "AEMET (citar a AEMET como autora)",
                          "estaciones": fusionar(previo, nuevo, hoy)})
     ultimo = max((max(d) for d in nuevo.values()), default="-")
     print(f"Estaciones con dato diario: {len(nuevo)} | sin serie: {sin_serie} | fallos: {fallos} | "
           f"último día publicado: {ultimo}")
+    problema = evaluar(len(ids), len(nuevo), fallos)
+    if problema:   # el dato ya descargado se guarda; el flujo de trabajo falla para que llegue el aviso de GitHub
+        raise SystemExit(problema)
 
 
 if __name__ == "__main__":

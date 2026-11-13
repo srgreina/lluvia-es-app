@@ -96,6 +96,34 @@ def test_diario():
         assert m["mm"] == round(3.0 + 4.0 + 10.0 + 0.5 * 15, 1)
 
 
+def test_aviso_diario():
+    assert diario.evaluar(40, 25, 0) is None
+    assert diario.evaluar(40, 10, 5) is None            # muchas estaciones sin serie (404) es normal
+    assert diario.evaluar(40, 0, 0) is not None          # no llegó nada
+    assert diario.evaluar(40, 10, 25) is not None        # la API falló en más de la mitad
+
+
+def test_frontend_cobertura():
+    """Una ventana de 48 h o más con menos del 90 % de horas con dato no puede mostrarse como cifra."""
+    import re
+    import shutil
+    import subprocess
+    from pathlib import Path
+    if not shutil.which("node"):
+        return
+    html = (Path(__file__).resolve().parent.parent / "docs" / "index.html").read_text(encoding="utf-8")
+    fn = html[html.index("function accRaw"):html.index("/* ---------- escala de color")]
+    wins = re.search(r"const WINDOWS = \{.*?\n\};", html, re.S).group(0)
+    wins = re.sub(r"th: \[[^\]]*\]", "", wins)
+    prog = wins + "\nconst S = {win: '30d', latest: {estaciones: {A: {acumulado: {" \
+        "'30d': {mm: 0, horas_con_dato: 36}, '7d': {mm: 3, horas_con_dato: 160}, '24h': {mm: 1, horas_con_dato: 24}," \
+        " '48h': {mm: 2, horas_con_dato: 36}}}}}};\n" + fn + \
+        "\nconsole.log(JSON.stringify([acc('A','30d'), acc('A','7d') && acc('A','7d').mm, acc('A','24h').mm, acc('A','48h')," \
+        " accRaw('A','30d').horas_con_dato]));"
+    out = subprocess.run(["node", "-e", prog], capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "[null,3,1,null,36]", out
+
+
 def test_embalses():
     html = """<html><body><table><tbody>
     <tr class="embalses-data-row"><td>16 EMBALSE DE LA CONCEPCIÓN</td><td>57.54</td><td>26.87</td><td>46.7</td><td>26.35</td><td>45.8</td><td>34.01</td><td>59.1</td><td>31.8</td></tr>
