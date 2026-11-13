@@ -286,9 +286,14 @@ async function load() {
   }
 }
 
-function acc(id, w = S.win) {
+function accRaw(id, w = S.win) {
   const a = S.latest && S.latest.estaciones[id] && S.latest.estaciones[id].acumulado[w];
   return !a || a.horas_con_dato === 0 ? null : a;
+}
+/* Una ventana larga solo se muestra si hay dato en al menos el 90 % de sus horas: un 0,0 sobre 36 h no es "0 en un mes". */
+function acc(id, w = S.win) {
+  const a = accRaw(id, w);
+  return a && WINDOWS[w].h >= 48 && a.horas_con_dato < 0.9 * WINDOWS[w].h ? null : a;
 }
 
 /* ---------- escala de color ---------- */
@@ -521,7 +526,11 @@ function renderDetail() {
   requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.height = (frac * 100) + '%'; }));
   const need = WINDOWS[S.win].h;
   let note = `${cap(winUltimas(S.win))}.`;
-  if (!a) note += ' La estación no tiene dato.';
+  if (!a) {
+    const raw = accRaw(id);
+    note += raw ? ` Aún no hay dato suficiente: se tienen ${raw.horas_con_dato} de ${need} h y la cifra aparecerá al llegar al 90 %.`
+                : ' La estación no tiene dato.';
+  }
   else if (a.horas_con_dato < need) {
     note += ` Con dato en ${a.horas_con_dato} de ${need} h.`;
     if (need >= 48 && a.horas_con_dato < 0.9 * need) note += ' Cifra parcial: el registro horario aún no cubre toda la ventana.';

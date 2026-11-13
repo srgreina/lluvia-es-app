@@ -68,11 +68,32 @@ def cargar_reciente(data_dir, horas, ahora):
     return df[(df.fecha_utc > desde) & (df.fecha_utc <= ahora)]
 
 
-def _acumulado(serie, horas, ahora):
-    desde = ahora - timedelta(hours=horas)
-    sub = serie[serie.fecha_utc > desde]
-    validos = sub.prec_mm.dropna()
-    return {"mm": round(float(validos.sum()), 1), "horas_con_dato": int(len(validos))}
+def _dia_de(fecha):
+    """Día UTC al que pertenece una hora; cada fila es el FIN de la hora (00:00 cierra el día anterior)."""
+    return (fecha - pd.Timedelta(minutes=1)).strftime("%Y-%m-%d")
+
+
+def acumular(serie, desde, ref, dias=None):
+    """Lluvia en (desde, ref]. Si hay datos diarios, cada día UTC completo dentro del intervalo se toma
+    del dato diario (24 h de cobertura) y las horas de esos días no se cuentan dos veces.
+    Devuelve mm, horas_con_dato y el primer instante cubierto (None si no hay nada)."""
+    usados = {}
+    for d, v in (dias or {}).items():
+        ini = pd.Timestamp(d, tz="UTC")
+        if ini >= desde and ini + pd.Timedelta(days=1) <= ref:
+            usados[d] = (ini, v)
+    sub = serie[(serie.fecha_utc > desde) & (serie.fecha_utc <= ref)].dropna(subset=["prec_mm"])
+    if usados:
+        sub = sub[~sub.fecha_utc.map(_dia_de).isin(usados)]
+    mm = float(sub.prec_mm.sum()) + sum(v for _, v in usados.values())
+    inicios = [i for i, _ in usados.values()] + ([sub.fecha_utc.min()] if len(sub) else [])
+    return {"mm": round(mm, 1), "horas_con_dato": int(len(sub)) + 24 * len(usados),
+            "desde": min(inicios) if inicios else None}
+
+
+def _acumulado(serie, horas, ahora, dias=None):
+    r = acumular(serie, ahora - timedelta(hours=horas), ahora, dias)
+    return {"mm": r["mm"], "horas_con_dato": r["horas_con_dato"]}
 
 
 def clave_ventana(horas):
@@ -80,16 +101,18 @@ def clave_ventana(horas):
     return f"{horas // 24}d" if horas >= 168 and horas % 24 == 0 else f"{horas}h"
 
 
-def construir_latest(df, ahora, horas_ventana, ventanas=(1, 6, 24)):
+def construir_latest(df, ahora, horas_ventana, ventanas=(1, 6, 24), diario=None):
     """Las ventanas se anclan a la última observación disponible, no a la hora de ejecución:
     AEMET publica con ~1 h de retraso y, si no, la ventana de 1 h saldría vacía.
-    `horas_ventana` es la longitud de la serie horaria que se publica (el gráfico)."""
+    `horas_ventana` es la longitud de la serie horaria que se publica (el gráfico).
+    `diario` ({estacion: {día: mm}}) completa solo las ventanas de 48 h o más."""
     ref = df.fecha_utc.max() if not df.empty else pd.Timestamp(ahora)
     estaciones = {}
     for est, serie in df.sort_values("fecha_utc").groupby("estacion"):
         reciente = serie[serie.fecha_utc > ref - timedelta(hours=horas_ventana)]
         estaciones[est] = {
-            "acumulado": {clave_ventana(h): _acumulado(serie, h, ref) for h in ventanas},
+            "acumulado": {clave_ventana(h): _acumulado(serie, h, ref, (diario or {}).get(est) if h >= 48 else None)
+                          for h in ventanas},
             "serie": [{"t": r.fecha_utc.strftime("%Y-%m-%dT%H:%MZ"),
                        "mm": None if pd.isna(r.prec_mm) else r.prec_mm}
                       for r in reciente.itertuples()],
@@ -100,22 +123,21 @@ def construir_latest(df, ahora, horas_ventana, ventanas=(1, 6, 24)):
             "ventana_horas": horas_ventana, "estaciones": estaciones}
 
 
-def acumulado_mes(data_dir, ref):
+def acumulado_mes(data_dir, ref, diario=None):
     """Lluvia del mes en curso (hasta `ref`, UTC) por estación, con su cobertura.
-    `desde_utc` es la primera hora recogida: si es posterior al día 1, el mes no está completo."""
+    `desde_utc` es el primer instante cubierto: si es posterior al día 1, el mes no está completo.
+    Con `diario` se rellenan los días completos que el registro horario aún no tiene."""
     ruta = _ruta_mes(data_dir, ref.year, ref.month)
-    if not ruta.exists():
-        return {}
-    df = pd.read_parquet(ruta)
-    df = df[df.fecha_utc <= ref]
+    df = pd.read_parquet(ruta) if ruta.exists() else pd.DataFrame(columns=COLUMNAS)
     inicio = pd.Timestamp(year=ref.year, month=ref.month, day=1, tz="UTC")
     horas_mes = int((ref - inicio).total_seconds() // 3600)  # cada fila es el fin de una hora
     salida = {}
-    for est, serie in df.groupby("estacion"):
-        validos = serie.prec_mm.dropna()
-        salida[est] = {"mm": round(float(validos.sum()), 1), "horas_con_dato": int(len(validos)),
-                       "horas_mes": horas_mes,
-                       "desde_utc": serie.fecha_utc.min().strftime("%Y-%m-%dT%H:%MZ")}
+    for est in sorted(set(df.estacion) | set(diario or {})):
+        r = acumular(df[df.estacion == est], inicio, ref, (diario or {}).get(est))
+        if r["desde"] is None:
+            continue
+        salida[est] = {"mm": r["mm"], "horas_con_dato": r["horas_con_dato"], "horas_mes": horas_mes,
+                       "desde_utc": r["desde"].strftime("%Y-%m-%dT%H:%MZ")}
     return salida
 
 
@@ -134,10 +156,12 @@ def main():
     ahora = datetime.now(timezone.utc)
     ventanas = cfg.get("ventanas_horas", [1, 6, 24])
     reciente = cargar_reciente(data, max(ventanas + [cfg["horas_ventana"]]), ahora)
-    latest = construir_latest(reciente, ahora, cfg["horas_ventana"], ventanas)
+    ruta_diario = data / "diario.json"
+    diario = leer_json(ruta_diario).get("estaciones", {}) if ruta_diario.exists() else {}
+    latest = construir_latest(reciente, ahora, cfg["horas_ventana"], ventanas, diario)
     ref = pd.Timestamp(latest["ultima_obs_utc"])
     latest["mes"] = ref.strftime("%Y-%m")
-    for est, m in acumulado_mes(data, ref).items():
+    for est, m in acumulado_mes(data, ref, diario).items():
         if est in latest["estaciones"]:
             latest["estaciones"][est]["mes"] = m
     escribir_json(data / "latest.json", latest)

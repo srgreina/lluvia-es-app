@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from ingest import catalogo, embalses, historico, horario
+from ingest import catalogo, diario, embalses, historico, horario
 from ingest.common import dms_a_decimal, haversine_km
 
 
@@ -62,6 +62,38 @@ def test_historico():
     s = historico.registros_a_serie(regs)
     assert s["1996"][0] == 10.0 and s["1996"][1] == 0.0 and s["1996"][2] is None
     assert s["1997"][11] == 3.5 and historico.contar_meses(s) == 3
+
+
+def test_diario():
+    regs = [{"fecha": "2026-11-08", "prec": "5,0"}, {"fecha": "2026-11-09", "prec": "Ip"},
+            {"fecha": "2026-11-10", "prec": ""}, {"fecha": "2026-11-11", "prec": "1.0"}]
+    assert diario.registros_a_dias(regs) == {"2026-11-08": 5.0, "2026-11-09": 0.0, "2026-11-11": 1.0}
+    hoy = datetime(2026, 11, 13, tzinfo=timezone.utc).date()
+    f = diario.fusionar({"A": {"2026-11-08": 1.0, "2026-05-01": 9.0}}, {"A": {"2026-11-08": 5.0}}, hoy)
+    assert f == {"A": {"2026-11-08": 5.0}}  # lo nuevo pisa a lo viejo y se purga lo antiguo
+    # acumular: sin doble cómputo cuando el día completo ya viene en el dato diario
+    ref = pd.Timestamp("2026-11-12T15:00", tz="UTC")
+    horas = pd.date_range("2026-11-11T01:00", "2026-11-12T15:00", freq="h", tz="UTC")
+    serie = pd.DataFrame({"estacion": "A", "fecha_utc": horas, "prec_mm": 0.5, "origen": "x"})
+    solo_h = horario.acumular(serie, ref - pd.Timedelta(hours=168), ref)
+    assert solo_h["horas_con_dato"] == len(horas) and solo_h["mm"] == round(0.5 * len(horas), 1)
+    dias = {"2026-11-05": 7.0,   # día que empieza antes de la ventana: no entra
+            "2026-11-08": 5.0, "2026-11-09": 2.0, "2026-11-11": 10.0}  # el 11 ya está en las horas
+    r = horario.acumular(serie, ref - pd.Timedelta(hours=168), ref, dias)
+    horas_12 = 15   # 12 de noviembre, de 01:00 a 15:00
+    assert r["horas_con_dato"] == 24 * 3 + horas_12
+    assert r["mm"] == round(5.0 + 2.0 + 10.0 + 0.5 * horas_12, 1)
+    assert r["desde"] == pd.Timestamp("2026-11-08", tz="UTC")
+    # el día 11 de noviembre cerrado a las 00:00 del 12 pertenece al día 11
+    assert horario._dia_de(pd.Timestamp("2026-11-12T00:00", tz="UTC")) == "2026-11-11"
+    lt = horario.construir_latest(serie, ref + pd.Timedelta(minutes=30), 24, (1, 24, 168), {"A": dias})
+    assert lt["estaciones"]["A"]["acumulado"]["24h"]["mm"] == 12.0   # <48 h: solo horario
+    assert lt["estaciones"]["A"]["acumulado"]["7d"]["mm"] == r["mm"]
+    with tempfile.TemporaryDirectory() as d:
+        horario.fusionar(d, serie.assign(origen="tiempo_real"))
+        m = horario.acumulado_mes(d, ref, {"A": {"2026-11-01": 3.0, "2026-11-02": 4.0, "2026-11-11": 10.0}})["A"]
+        assert m["desde_utc"] == "2026-11-01T00:00Z" and m["horas_con_dato"] == 48 + 24 + 15
+        assert m["mm"] == round(3.0 + 4.0 + 10.0 + 0.5 * 15, 1)
 
 
 def test_embalses():
