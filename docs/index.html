@@ -236,6 +236,7 @@ const winUltimas = w => ({'7d': 'la última semana', '30d': 'el último mes'})[w
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const STALE_MIN = 240;
 const MAX_GEO_KM = 60;
+const UMBRAL_KM = 15;   // igual que umbral_aviso_km de config.yml
 
 const fmt1 = new Intl.NumberFormat('es-ES', {minimumFractionDigits: 1, maximumFractionDigits: 1});
 const fmtPin = mm => mm == null ? '·' : (mm >= 10 ? String(Math.round(mm)) : (mm === 0 ? '0' : fmt1.format(mm)));
@@ -257,7 +258,7 @@ function el(tag, attrs, ...kids) {
 }
 
 const S = {win: '24h', est: {}, mun: [], asig: {}, latest: null, selMuni: null, selStation: null,
-           vista: 'horas', anio: null, mensual: {}, map: null, pins: {}, homePin: null, link: null, chart: null, loaded: false};
+           vista: 'horas', anio: null, mensual: {}, map: null, pins: {}, homePin: null, link: null, pos: null, chart: null, loaded: false};
 
 /* ---------- datos ---------- */
 async function getJSON(name) {
@@ -365,8 +366,7 @@ function updatePins() {
 function drawLink() {
   if (S.link) { S.link.remove(); S.link = null; }
   if (S.homePin) { S.homePin.remove(); S.homePin = null; }
-  if (!S.selMuni) return;
-  const m = S.munByIne[S.selMuni];
+  const m = S.pos || (S.selMuni && S.munByIne[S.selMuni]);
   const e = S.est[S.selStation];
   if (!m || !e) return;
   S.homePin = L.marker([m.lat, m.lon], {icon: L.divIcon({className: '', html: '<div class="homepin"></div>', iconSize: [14, 14], iconAnchor: [7, 7]}), interactive: false}).addTo(S.map);
@@ -384,7 +384,7 @@ function selectMunicipio(ine, fly = true) {
   const a = S.asig[ine];
   const m = S.munByIne[ine];
   if (!a || !m) return;
-  S.selMuni = ine; S.selStation = a.estacion;
+  S.selMuni = ine; S.selStation = a.estacion; S.pos = null;
   $('muni').value = m.nombre;
   setHash(); render();
   if (fly) {
@@ -395,10 +395,26 @@ function selectMunicipio(ine, fly = true) {
 
 function selectStation(id, fly = false) {
   if (!S.est[id]) return;
-  S.selMuni = null; S.selStation = id;
+  S.selMuni = null; S.selStation = id; S.pos = null;
   $('muni').value = '';
   setHash(); render();
   if (fly) S.map.panTo([S.est[id].lat, S.est[id].lon]);
+}
+
+/* «Mi zona»: la estación más cercana a las coordenadas reales, no la asignada al municipio. */
+function selectPosicion(la, lo) {
+  let best = null, bd = Infinity;
+  for (const [id, e] of Object.entries(S.est)) {
+    const d = km(la, lo, e.lat, e.lon);
+    if (d < bd) { bd = d; best = id; }
+  }
+  if (!best || bd > MAX_GEO_KM) { toast('Tu ubicación queda fuera de la zona cubierta (provincia de Málaga).'); return; }
+  toast('');
+  S.selMuni = null; S.selStation = best; S.pos = {lat: la, lon: lo, km: bd};
+  $('muni').value = '';
+  setHash(); render();
+  const e = S.est[best];
+  S.map.fitBounds([[la, lo], [e.lat, e.lon]], {padding: [60, 60], maxZoom: 14});
 }
 
 function applyInitialSelection() {
@@ -423,14 +439,7 @@ function geolocate() {
   if (!navigator.geolocation) { toast('Tu navegador no permite usar la ubicación.'); return; }
   toast('Buscando tu ubicación…');
   navigator.geolocation.getCurrentPosition(pos => {
-    const {latitude: la, longitude: lo} = pos.coords;
-    let best = null, bd = Infinity;
-    for (const m of S.mun) {
-      const d = km(la, lo, m.lat, m.lon);
-      if (d < bd) { bd = d; best = m; }
-    }
-    if (best && bd <= MAX_GEO_KM) { toast(''); selectMunicipio(best.ine, true); }
-    else toast('Tu ubicación queda fuera de la zona cubierta (provincia de Málaga).');
+    selectPosicion(pos.coords.latitude, pos.coords.longitude);
   }, () => toast('No se pudo obtener tu ubicación. Revisa el permiso del navegador.'), {enableHighAccuracy: false, timeout: 10000, maximumAge: 300000});
 }
 
@@ -457,7 +466,7 @@ function renderMini() {
   if (!S.selStation) { box.replaceChildren(el('span', {class: 'nm'}, 'Toca una estación del mapa')); return; }
   const a = acc(S.selStation);
   const m = S.selMuni ? S.munByIne[S.selMuni] : null;
-  box.replaceChildren(el('span', {class: 'nm'}, m ? m.nombre : S.est[S.selStation].nombre),
+  box.replaceChildren(el('span', {class: 'nm'}, S.pos ? 'Tu ubicación' : (m ? m.nombre : S.est[S.selStation].nombre)),
     el('span', {}, el('span', {class: 'v'}, a ? fmt1.format(a.mm) : 'Sin dato'), a ? el('span', {class: 'u'}, `l/m² en ${winName(S.win)}`) : ''));
 }
 
@@ -504,8 +513,14 @@ function renderDetail() {
   const asg = m ? S.asig[S.selMuni] : null;
   const a = acc(id);
   const parts = [];
-  parts.push(el('h2', {}, m ? m.nombre : e.nombre));
-  if (asg) {
+  parts.push(el('h2', {}, S.pos ? 'Tu ubicación' : (m ? m.nombre : e.nombre)));
+  if (S.pos) {
+    const lejos = S.pos.km > UMBRAL_KM;
+    parts.push(el('span', {class: `badge ${lejos ? 'warn' : 'near'}`},
+      lejos ? `Dato orientativo: la estación más cercana está a ${fmt1.format(S.pos.km)} km`
+            : `Estación más cercana a tu ubicación, a ${fmt1.format(S.pos.km)} km`));
+    parts.push(el('div', {class: 'note', style: 'margin-top:6px'}, `Estación ${e.nombre} (${id}), a ${Math.round(e.alt)} m de altitud`));
+  } else if (asg) {
     let cls = 'near', txt = `Estación más cercana, a ${fmt1.format(asg.distancia_km)} km`;
     if (asg.propia) { cls = 'ok'; txt = 'Estación propia'; }
     else if (asg.orientativo) { cls = 'warn'; txt = `Dato orientativo: la estación está a ${fmt1.format(asg.distancia_km)} km`; }
