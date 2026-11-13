@@ -137,7 +137,7 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
   .app{height:100%;min-height:0}
   header,.search,aside{display:none}
   main{display:block;padding:0}
-  #map{position:fixed;inset:0;width:100%;height:100%;min-height:0;border:0;border-radius:0;z-index:0}
+  #map{position:fixed!important;inset:0;width:100%;height:100%;min-height:0;border:0;border-radius:0;z-index:0}
   .controls{position:fixed;z-index:1000;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));padding:0;margin:0;display:block}
   .controls .seg{box-shadow:0 1px 6px rgba(0,0,0,.35)}
   .controls .seg button{height:40px;padding:0 14px}
@@ -327,7 +327,8 @@ function initMap() {
     S.cluster.addLayer(m);
   }
   S.map.addLayer(S.cluster);
-  window.addEventListener('resize', () => S.map.invalidateSize());
+  window.addEventListener('resize', () => S.map.invalidateSize({animate: false}));
+  if (window.ResizeObserver) new ResizeObserver(() => S.map.invalidateSize({animate: false})).observe(document.getElementById('map'));
   window.addEventListener('orientationchange', () => setTimeout(() => S.map.invalidateSize(), 250));
 }
 

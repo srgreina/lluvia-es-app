@@ -2,7 +2,9 @@ name: Ingesta horaria
 
 on:
   schedule:
-    - cron: "7 * * * *"   # cada hora, minuto 7 (evita la hora en punto)
+    - cron: "7 * * * *"    # cada hora, minuto 7 (evita la hora en punto)
+    - cron: "37 * * * *"   # refuerzo: GitHub descarta ejecuciones programadas con frecuencia
+    - cron: "52 * * * *"   # refuerzo; la ingesta es idempotente
   workflow_dispatch:
 
 permissions:
