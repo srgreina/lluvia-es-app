@@ -124,6 +124,20 @@ def test_frontend_cobertura():
     assert out == "[null,3,1,null,36]", out
 
 
+def test_sustitutos():
+    est = {"P": {"lat": 36.7075, "lon": -4.4272, "nombre": "PUERTO"},
+           "C": {"lat": 36.7178, "lon": -4.4817, "nombre": "CENTRO"},
+           "L": {"lat": 37.17, "lon": -4.15, "nombre": "LEJOS"}}
+    s = diario.elegir_sustitutos(est, {"C"}, 15)
+    assert s == {"P": {"estacion": "C", "nombre": "CENTRO", "distancia_km": s["P"]["distancia_km"]}} and 4 < s["P"]["distancia_km"] < 6
+    assert "L" not in s                                  # fuera de radio: sin sustituto
+    assert diario.elegir_sustitutos(est, {"C", "P"}, 15).get("P") is None   # si publica la propia, no hay sustituto
+    ef, usados = horario.dias_efectivos({"C": {"2026-11-01": 1.0}}, s)
+    assert ef["P"] == {"2026-11-01": 1.0} and usados["P"]["estacion"] == "C"
+    ef, usados = horario.dias_efectivos({"C": {"x": 1}, "P": {"x": 2}}, s)
+    assert ef["P"] == {"x": 2} and usados == {}
+
+
 def test_embalses():
     html = """<html><body><table><tbody>
     <tr class="embalses-data-row"><td>16 EMBALSE DE LA CONCEPCIÓN</td><td>57.54</td><td>26.87</td><td>46.7</td><td>26.35</td><td>45.8</td><td>34.01</td><td>59.1</td><td>31.8</td></tr>

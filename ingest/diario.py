@@ -12,7 +12,8 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .common import AemetError, SinDatos, aemet_get, escribir_json, leer_json
+from .common import (AemetError, SinDatos, aemet_get, cargar_config, escribir_json, haversine_km,
+                     leer_json)
 from .historico import parsear_pmes
 
 DIAS_DESCARGA = 45
@@ -49,6 +50,26 @@ def fusionar(actual, nuevo, hoy):
     return salida
 
 
+def elegir_sustitutos(estaciones, con_dato, max_km):
+    """Para cada estación sin dato diario propio, la más cercana (<= max_km) que sí lo tiene.
+    Se recalcula en cada ejecución: si AEMET vuelve a publicar la serie propia, deja de usarse el sustituto."""
+    salida = {}
+    for est, e in estaciones.items():
+        if est in con_dato:
+            continue
+        mejor = None
+        for otra in con_dato:
+            o = estaciones.get(otra)
+            if not o:
+                continue
+            km = haversine_km(e["lat"], e["lon"], o["lat"], o["lon"])
+            if km <= max_km and (mejor is None or km < mejor[0]):
+                mejor = (km, otra, o["nombre"])
+        if mejor:
+            salida[est] = {"estacion": mejor[1], "nombre": mejor[2], "distancia_km": round(mejor[0], 1)}
+    return salida
+
+
 def evaluar(n_estaciones, n_con_dato, fallos, max_fallos=0.5):
     """Mensaje de error si la descarga no es fiable (None si va bien). Que una estación no tenga serie
     diaria (404) es normal; lo que alarma es que falle la API o no llegue nada."""
@@ -64,7 +85,8 @@ def main():
     ap.add_argument("--data-dir", required=True)
     args = ap.parse_args()
     data = Path(args.data_dir)
-    ids = sorted(leer_json(data / "estaciones.json"))
+    estaciones = leer_json(data / "estaciones.json")
+    ids = sorted(estaciones)
     ruta = data / "diario.json"
     previo = leer_json(ruta).get("estaciones", {}) if ruta.exists() else {}
 
@@ -85,12 +107,14 @@ def main():
             continue
         if dias:
             nuevo[est] = dias
+    total = fusionar(previo, nuevo, hoy)
+    sustitutos = elegir_sustitutos(estaciones, set(total), cargar_config()["umbral_aviso_km"])
     escribir_json(ruta, {"actualizado_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
                          "fuente": "AEMET (citar a AEMET como autora)",
-                         "estaciones": fusionar(previo, nuevo, hoy)})
+                         "estaciones": total, "sustitutos": sustitutos})
     ultimo = max((max(d) for d in nuevo.values()), default="-")
     print(f"Estaciones con dato diario: {len(nuevo)} | sin serie: {sin_serie} | fallos: {fallos} | "
-          f"último día publicado: {ultimo}")
+          f"último día publicado: {ultimo} | con sustituto: {len(sustitutos)}")
     problema = evaluar(len(ids), len(nuevo), fallos)
     if problema:   # el dato ya descargado se guarda; el flujo de trabajo falla para que llegue el aviso de GitHub
         raise SystemExit(problema)

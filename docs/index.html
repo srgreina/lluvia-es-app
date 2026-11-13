@@ -535,6 +535,8 @@ function renderDetail() {
     note += ` Con dato en ${a.horas_con_dato} de ${need} h.`;
     if (need >= 48 && a.horas_con_dato < 0.9 * need) note += ' Cifra parcial: el registro horario aún no cubre toda la ventana.';
   }
+  const sust = S.latest.estaciones[id] && S.latest.estaciones[id].dias_de;
+  if (sust && WINDOWS[S.win].h >= 48) note += ` Los días completos son datos de ${sust.nombre}, a ${fmt1.format(sust.distancia_km)} km: esta estación no tiene serie diaria.`;
   parts.push(el('div', {class: 'note'}, note));
   parts.push(el('div', {class: 'chips'}, ...ORDEN.map(w => {
     const x = acc(id, w);

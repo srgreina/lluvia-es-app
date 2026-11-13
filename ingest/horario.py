@@ -141,6 +141,17 @@ def acumulado_mes(data_dir, ref, diario=None):
     return salida
 
 
+def dias_efectivos(propios, sustitutos):
+    """Datos diarios por estación: los propios y, donde no existen, los de la estación sustituta.
+    Devuelve también {estacion: {estacion, nombre, distancia_km}} de las que usan sustituto."""
+    efectivos, usados = dict(propios), {}
+    for est, s in sustitutos.items():
+        if est not in propios and s["estacion"] in propios:
+            efectivos[est] = propios[s["estacion"]]
+            usados[est] = s
+    return efectivos, usados
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", required=True)
@@ -157,13 +168,19 @@ def main():
     ventanas = cfg.get("ventanas_horas", [1, 6, 24])
     reciente = cargar_reciente(data, max(ventanas + [cfg["horas_ventana"]]), ahora)
     ruta_diario = data / "diario.json"
-    diario = leer_json(ruta_diario).get("estaciones", {}) if ruta_diario.exists() else {}
+    diario, dias_de = {}, {}
+    if ruta_diario.exists():
+        bruto = leer_json(ruta_diario)
+        diario, dias_de = dias_efectivos(bruto.get("estaciones", {}), bruto.get("sustitutos", {}))
     latest = construir_latest(reciente, ahora, cfg["horas_ventana"], ventanas, diario)
     ref = pd.Timestamp(latest["ultima_obs_utc"])
     latest["mes"] = ref.strftime("%Y-%m")
     for est, m in acumulado_mes(data, ref, diario).items():
         if est in latest["estaciones"]:
             latest["estaciones"][est]["mes"] = m
+    for est, s in dias_de.items():
+        if est in latest["estaciones"]:
+            latest["estaciones"][est]["dias_de"] = s
     escribir_json(data / "latest.json", latest)
     print(f"Observaciones recibidas: {len(obs)} | filas de Málaga: {len(df)} | "
           f"estaciones en latest: {reciente.estacion.nunique()}")
