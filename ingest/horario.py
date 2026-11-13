@@ -75,18 +75,24 @@ def _acumulado(serie, horas, ahora):
     return {"mm": round(float(validos.sum()), 1), "horas_con_dato": int(len(validos))}
 
 
-def construir_latest(df, ahora, horas_ventana):
-    """Las ventanas (1/6/24 h) se anclan a la última observación disponible, no a la hora de
-    ejecución: AEMET publica con ~1 h de retraso y, si no, la ventana de 1 h saldría vacía."""
+def clave_ventana(horas):
+    """1 -> '1h', 24 -> '24h', 48 -> '48h', 168 -> '7d', 720 -> '30d'."""
+    return f"{horas // 24}d" if horas >= 168 and horas % 24 == 0 else f"{horas}h"
+
+
+def construir_latest(df, ahora, horas_ventana, ventanas=(1, 6, 24)):
+    """Las ventanas se anclan a la última observación disponible, no a la hora de ejecución:
+    AEMET publica con ~1 h de retraso y, si no, la ventana de 1 h saldría vacía.
+    `horas_ventana` es la longitud de la serie horaria que se publica (el gráfico)."""
     ref = df.fecha_utc.max() if not df.empty else pd.Timestamp(ahora)
     estaciones = {}
     for est, serie in df.sort_values("fecha_utc").groupby("estacion"):
+        reciente = serie[serie.fecha_utc > ref - timedelta(hours=horas_ventana)]
         estaciones[est] = {
-            "acumulado": {"1h": _acumulado(serie, 1, ref), "6h": _acumulado(serie, 6, ref),
-                          "24h": _acumulado(serie, 24, ref)},
+            "acumulado": {clave_ventana(h): _acumulado(serie, h, ref) for h in ventanas},
             "serie": [{"t": r.fecha_utc.strftime("%Y-%m-%dT%H:%MZ"),
                        "mm": None if pd.isna(r.prec_mm) else r.prec_mm}
-                      for r in serie.itertuples()],
+                      for r in reciente.itertuples()],
         }
     return {"generado_utc": ahora.strftime("%Y-%m-%dT%H:%MZ"),
             "ultima_obs_utc": ref.strftime("%Y-%m-%dT%H:%MZ"),
@@ -126,8 +132,9 @@ def main():
     fusionar(data, df)
 
     ahora = datetime.now(timezone.utc)
-    reciente = cargar_reciente(data, cfg["horas_ventana"], ahora)
-    latest = construir_latest(reciente, ahora, cfg["horas_ventana"])
+    ventanas = cfg.get("ventanas_horas", [1, 6, 24])
+    reciente = cargar_reciente(data, max(ventanas + [cfg["horas_ventana"]]), ahora)
+    latest = construir_latest(reciente, ahora, cfg["horas_ventana"], ventanas)
     ref = pd.Timestamp(latest["ultima_obs_utc"])
     latest["mes"] = ref.strftime("%Y-%m")
     for est, m in acumulado_mes(data, ref).items():

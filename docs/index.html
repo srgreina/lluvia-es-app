@@ -43,7 +43,7 @@ h1{margin:0;font:700 32px/1.05 var(--display);letter-spacing:-.01em}
 .icon-btn:active{transform:scale(.97)}
 .controls{display:flex;flex-wrap:wrap;gap:8px;padding:6px calc(16px + env(safe-area-inset-right)) 12px calc(16px + env(safe-area-inset-left))}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
-.seg button{border:0;background:transparent;color:var(--fg);padding:0 18px;height:44px;font:600 17px var(--display);cursor:pointer}
+.seg button{border:0;background:transparent;color:var(--fg);padding:0 13px;height:44px;font:600 17px var(--display);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .search{flex:1 1 240px;display:flex;gap:8px;min-width:0}
 .search input{flex:1;min-width:0;height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;background:var(--card);color:var(--fg)}
@@ -72,7 +72,7 @@ aside{background:var(--card);border:1px solid var(--line);border-radius:14px;min
 .ticks{position:relative;width:34px;height:calc(100% - 4px);margin:2px 0}
 .tick{position:absolute;left:0;display:flex;align-items:center;gap:4px;font:500 12px/1 var(--text);color:var(--muted);transform:translateY(50%)}
 .tick::before{content:"";width:8px;border-top:1.5px solid var(--fg)}
-.chips{display:flex;gap:8px;margin:14px 0}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
 .chip{flex:1;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:10px;padding:7px 4px;font:inherit;text-align:center;cursor:pointer}
 .chip[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
 .chip b{display:block;font:700 19px var(--display)}
@@ -165,6 +165,9 @@ ol.rank .v{font:700 18px var(--display);font-variant-numeric:tabular-nums}
       <button type="button" data-win="1h" aria-pressed="false">1 h</button>
       <button type="button" data-win="6h" aria-pressed="false">6 h</button>
       <button type="button" data-win="24h" aria-pressed="true">24 h</button>
+      <button type="button" data-win="48h" aria-pressed="false">48 h</button>
+      <button type="button" data-win="7d" aria-pressed="false">1 sem</button>
+      <button type="button" data-win="30d" aria-pressed="false">1 mes</button>
     </div>
     <div class="search">
       <input id="muni" list="munis" type="search" placeholder="Buscar municipio…" autocomplete="off" aria-label="Buscar municipio">
@@ -215,7 +218,15 @@ const WINDOWS = {
   '1h':  {h: 1,  th: [0.1, 1, 4, 10, 20]},
   '6h':  {h: 6,  th: [0.1, 2, 8, 20, 40]},
   '24h': {h: 24, th: [0.1, 5, 15, 40, 80]},
+  '48h': {h: 48, th: [0.1, 8, 25, 60, 120]},
+  '7d':  {h: 168, th: [0.1, 15, 40, 100, 200]},
+  '30d': {h: 720, th: [0.1, 30, 80, 180, 350]},
 };
+const ORDEN = ['1h', '6h', '24h', '48h', '7d', '30d'];
+const winName = w => ({'7d': '1 semana', '30d': '1 mes'})[w] || w.replace('h', ' h');
+const winShort = w => ({'7d': '1 sem', '30d': '1 mes'})[w] || w.replace('h', ' h');
+const winUltimas = w => ({'7d': 'la última semana', '30d': 'el último mes'})[w] || `las últimas ${w.replace('h', ' h')}`;
+const cap = s => s[0].toUpperCase() + s.slice(1);
 const STALE_MIN = 240;
 const MAX_GEO_KM = 60;
 
@@ -434,7 +445,7 @@ function renderMini() {
   const a = acc(S.selStation);
   const m = S.selMuni ? S.munByIne[S.selMuni] : null;
   box.replaceChildren(el('span', {class: 'nm'}, m ? m.nombre : S.est[S.selStation].nombre),
-    el('span', {}, el('span', {class: 'v'}, a ? fmt1.format(a.mm) : 'Sin dato'), a ? el('span', {class: 'u'}, `l/m² en ${S.win.replace('h', ' h')}`) : ''));
+    el('span', {}, el('span', {class: 'v'}, a ? fmt1.format(a.mm) : 'Sin dato'), a ? el('span', {class: 'u'}, `l/m² en ${winName(S.win)}`) : ''));
 }
 
 function renderHeader() {
@@ -452,11 +463,11 @@ function renderLegend() {
   $('legend').replaceChildren(...labels.map((t, i) => {
     const s = el('span', {}, el('i', {style: `background:${colorVar(i)}`}), t);
     return s;
-  }), el('span', {}, 'l/m² en ' + S.win.replace('h', ' h')));
+  }), el('span', {}, 'l/m² en ' + winName(S.win)));
 }
 
 function renderRank() {
-  $('rank-title').textContent = `Más lluvia en las últimas ${S.win.replace('h', ' h')}`;
+  $('rank-title').textContent = `Más lluvia en ${winUltimas(S.win)}`;
   const th = WINDOWS[S.win].th;
   const rows = Object.keys(S.est).map(id => ({id, a: acc(id)})).filter(r => r.a && r.a.mm > 0).sort((x, y) => y.a.mm - x.a.mm).slice(0, 8);
   const ol = $('rank');
@@ -501,14 +512,17 @@ function renderDetail() {
     el('div', {class: a ? 'num' : 'num empty'}, a ? fmt1.format(a.mm) : 'Sin dato', a ? el('small', {}, 'l/m²') : ''), gauge));
   requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.height = (frac * 100) + '%'; }));
   const need = WINDOWS[S.win].h;
-  let note = `Últimas ${S.win.replace('h', ' h')}.`;
+  let note = `${cap(winUltimas(S.win))}.`;
   if (!a) note += ' La estación no tiene dato.';
-  else if (a.horas_con_dato < need) note += ` Con dato en ${a.horas_con_dato} de ${need} h.`;
+  else if (a.horas_con_dato < need) {
+    note += ` Con dato en ${a.horas_con_dato} de ${need} h.`;
+    if (need >= 48 && a.horas_con_dato < 0.9 * need) note += ' Cifra parcial: el registro horario aún no cubre toda la ventana.';
+  }
   parts.push(el('div', {class: 'note'}, note));
-  parts.push(el('div', {class: 'chips'}, ...['1h', '6h', '24h'].map(w => {
+  parts.push(el('div', {class: 'chips'}, ...ORDEN.map(w => {
     const x = acc(id, w);
     return el('button', {class: 'chip', type: 'button', 'aria-pressed': String(w === S.win), onclick: () => { S.win = w; render(); }},
-      el('b', {}, x ? fmt1.format(x.mm) : '–'), el('span', {}, w.replace('h', ' h')));
+      el('b', {}, x ? fmt1.format(x.mm) : '–'), el('span', {}, winShort(w)));
   })));
   const normal = el('div', {class: 'normal'});
   parts.push(normal);

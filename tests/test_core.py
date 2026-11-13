@@ -42,10 +42,12 @@ def test_fusion_y_latest():
         horario.fusionar(d, df)  # idempotente
         rec = horario.cargar_reciente(d, 24, ahora)
         assert len(rec) == 6 and set(rec.estacion) == {"A"}
-        lt = horario.construir_latest(rec, ahora, 24)
+        lt = horario.construir_latest(rec, ahora, 24, (1, 6, 24, 48, 168, 720))
         a = lt["estaciones"]["A"]["acumulado"]
         assert a["24h"]["horas_con_dato"] == 5 and a["24h"]["mm"] == 4.0  # 0.5+2.0+3x0.5, 11:00 sin dato
         assert a["1h"]["mm"] == 0.5
+        assert set(a) == {"1h", "6h", "24h", "48h", "7d", "30d"} and a["30d"]["mm"] == 4.0
+        assert horario.clave_ventana(168) == "7d" and horario.clave_ventana(720) == "30d" and horario.clave_ventana(48) == "48h"
         assert lt["ultima_obs_utc"] == "2026-11-12T15:00Z"  # ventanas ancladas a la última observación
         m = horario.acumulado_mes(d, pd.Timestamp(lt["ultima_obs_utc"]))["A"]
         assert m["mm"] == 4.0 and m["horas_con_dato"] == 5 and m["desde_utc"] == "2026-11-12T10:00Z"
